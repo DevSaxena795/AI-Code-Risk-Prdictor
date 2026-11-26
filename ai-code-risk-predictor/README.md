@@ -1,8 +1,20 @@
 # AI-Powered Code Complexity & Technical Debt Predictor
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/React_18-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React" />
+  <img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/XGBoost-EB6424?style=for-the-badge&logo=xgboost&logoColor=white" alt="XGBoost" />
+  <img src="https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white" alt="Tailwind" />
+  <img src="https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge" alt="License" />
+</p>
+
 Analyzes a GitHub repository, predicts which files are likely to become bug-prone or
 expensive to maintain in the next 3–6 months, explains **why** (SHAP), and ranks every file
 as **Critical / High / Medium / Low** risk, so engineering managers know what to fix first.
+
+---
 
 ## How the pieces fit
 
@@ -17,10 +29,100 @@ heatmap, trends, SHAP charts
 
 | Folder | Role | Stack |
 |---|---|---|
-| `pipeline/` | Member 1 — Data extraction & processing | Python, GitPython, `ast`, Radon, Lizard, pandas |
-| `ml/` | Member 2 — Prediction, NLP, explainability | scikit-learn, XGBoost, HuggingFace, SHAP |
-| `backend/` | Member 3 — APIs, database, GitHub App | FastAPI, SQLAlchemy, PostgreSQL, Docker |
-| `frontend/` | Member 4 — Dashboard & data viz | React, Tailwind, Recharts/D3, Zustand |
+| `pipeline/` | Member 1 — Data extraction & processing | Python, GitPython, `ast`, Radon, Lizard (Polyglot: `.py`, `.ts`, `.tsx`, `.js`, `.jsx`), pandas |
+| `ml/` | Member 2 — Prediction, NLP, explainability | scikit-learn, XGBoost, HuggingFace, SHAP, Effort-Aware metrics ($P_{opt}$, $Recall@20\%LOC$) |
+| `backend/` | Member 3 — APIs, database, GitHub App | FastAPI, SQLAlchemy, SQLite / PostgreSQL, Docker |
+| `frontend/` | Member 4 — Dashboard & data viz | React 18, TypeScript, Tailwind, Recharts/D3, Zustand |
+
+---
+
+## 🏗 High-Level System Architecture & Design
+
+### Multi-Tier Dataflow & Processing Engine
+```mermaid
+flowchart TD
+    subgraph Layer1["1. Data Ingestion & Extraction Layer (Member 1)"]
+        GH["GitHub URL / Local Repo"] --> A1["Git Mining Engine<br/>(GitPython / PyDriller)"]
+        GH --> A2["Polyglot AST & Graph Engine<br/>(Radon + Lizard)"]
+        A1 -->|Commit log, Churn, Authors, Timezones| STORE[("Commit & Static Cache<br/>(data/cache/)")]
+        A2 -->|Cyclomatic, Nesting, Cycles, PageRank| STORE
+    end
+
+    subgraph Layer2["2. Temporal Feature Engineering Layer (Member 1 + 2)"]
+        STORE --> A3["Temporal Snapshot Engine<br/>(pipeline/dataset.py)"]
+        A3 -->|History before T| F_PAST["Past Process & Product Features"]
+        A3 -->|Window [T, T + 6mo)| F_FUTURE["Future Defect Labeling<br/>(is_bug_fix &ge; 1)"]
+        F_PAST --> B1["Developer NLP Sentiment<br/>(Frustration & Urgency)"]
+        B1 --> MATRIX["Leak-Free Training Matrix<br/>(data/processed/dataset.csv)"]
+        F_FUTURE --> MATRIX
+    end
+
+    subgraph Layer3["3. Machine Learning Core & XAI (Member 2)"]
+        MATRIX --> B2["Expanding-Window CV<br/>(2019..2022 Folds)"]
+        B2 --> B3["Model Training & Tuning<br/>(Logistic / RF / XGBoost)"]
+        B3 --> CALIB["Platt Scaling Sigmoid Calibration<br/>P(y=1|x)"]
+        CALIB --> EFFORT["Effort-Aware Benchmarks<br/>(Recall@20%LOC, P_opt)"]
+        CALIB --> B4["Game-Theoretic SHAP<br/>(TreeSHAP / LinearSHAP)"]
+        B4 --> ADVICE["Martin Fowler Refactoring Rulebook<br/>(Actionable Code Advice)"]
+    end
+
+    subgraph Layer4["4. Full-Stack Web & CI/CD Layer (Member 3 + 4)"]
+        CALIB --> C1["FastAPI REST Backend (:8001)<br/>(Async Background Scans)"]
+        ADVICE --> C1
+        C1 --> DB[("SQLite / PostgreSQL<br/>(risk_predictor.db)")]
+        C1 <--> C2["GitHub App Webhook Engine<br/>(Automated PR Risk Comments)"]
+        C1 <--> D1["React 18 / TypeScript Dashboard (:5173)<br/>Heatmap, FileTable, Risk Trends"]
+    end
+```
+
+### Scan Lifecycle Sequence Diagram
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Manager as Engineering Manager
+    participant UI as React Dashboard (:5173)
+    participant API as FastAPI Backend (:8001)
+    participant Pipe as Scanner (pipeline/scanner.py)
+    participant AST as Static & Graph Engine
+    participant ML as ML Inference (ml/predictor.py)
+    participant DB as SQLite / PostgreSQL
+
+    Manager->>UI: Enter repo URL (e.g. psf/requests or CBhatia376/derma-connect)
+    UI->>API: POST /api/repositories/{id}/scans
+    API-->>UI: 202 Accepted (Scan queued)
+    
+    rect rgb(240, 248, 255)
+    Note over API,Pipe: Async Worker Execution
+    API->>Pipe: scan_repository(repo_url, history_points=6)
+    Pipe->>Pipe: Clone or update repo in data/repos/
+    Pipe->>Pipe: Parse Git commit history (PyDriller incremental)
+    Pipe->>AST: Analyze source files (.py, .ts, .tsx, .js, .jsx)
+    AST->>AST: Compute Cyclomatic & Cognitive Complexity
+    AST->>AST: Detect Circular Cycles (Tarjan SCC) & PageRank
+    Pipe->>Pipe: Merge features at snapshot date T (today)
+    Pipe-->>API: ScanResult (features matrix)
+    end
+
+    rect rgb(245, 255, 245)
+    Note over API,ML: Model Inference & Calibration
+    API->>ML: RiskPredictor.predict(features)
+    ML->>ML: Apply log1p scaling & Platt calibration
+    ML->>ML: Compute SHAP attributions & factor grouping
+    ML->>ML: Match Fowler refactoring recommendations
+    ML-->>API: Predictions (Risk score, rank, SHAP, advice)
+    end
+
+    API->>DB: Store FileAnalysis rows & commit history
+    API->>DB: Mark scan status = 'completed'
+    
+    loop Every 3s Polling
+        UI->>API: GET /api/scans/{id}
+        API-->>UI: Status: completed (scored files)
+    end
+    UI->>Manager: Render Interactive Treemap, Risk Donut & FileTable
+```
+
+---
 
 ## Setup (Python parts)
 
@@ -29,6 +131,8 @@ python -m venv venv
 .\venv\Scripts\Activate.ps1
 pip install -r pipeline/requirements.txt -r backend/requirements.txt
 ```
+
+---
 
 ## Data pipeline usage (Member 1)
 
@@ -51,14 +155,14 @@ python -m pipeline.run refresh --every 360                    # keep feeding fre
   `result.features` has exactly the training feature columns (`dataset.META_COLS` /
   `dataset.LABEL_COLS` list the non-feature columns).
 
-Individual steps:
+### Individual steps:
 
 ```powershell
 # A1 - Git history: commits table + per-file history features
 python -m pipeline.git_history https://github.com/psf/requests
 python -m pipeline.git_history data/repos/psf__requests --until 2016-01-01
 
-# A2 - Static analysis of every Python file (today, or at any past commit/date)
+# A2 - Static analysis of every source file (today, or at any past commit/date)
 python -m pipeline.static_analysis data/repos/psf__requests
 python -m pipeline.static_analysis data/repos/psf__requests --rev 2016-01-01
 
@@ -67,24 +171,33 @@ python -m pipeline.dataset data/repos/psf__requests
 python -m pipeline.dataset https://github.com/psf/requests https://github.com/pallets/flask --interval 3
 ```
 
-**How the A3 dataset avoids cheating:** at each snapshot date T, features use only commits
-*before* T and the code *as it was* at T; labels count only what happens *after* T
-(`future_bug_fixes`, `future_commits`, `future_churn`, `label_bug_prone` = at least one bug fix).
-Snapshots whose label window isn't over yet are dropped. File renames are followed, so a
-2013 `requests/models.py` row joins the history of today's `src/requests/models.py`.
-Bug-fix commits are detected from commit messages; "fixes" about docs/typos/CI/lint, and fix
-commits touching more than 10 files (bulk changes), don't count.
+### Advanced Algorithmic Features in Pipeline (DSA & Metrics)
+1. **Polyglot Parsing Support:** Analyzes `.py`, `.ts`, `.tsx`, `.js`, `.jsx` source files via AST and **Lizard**, resolving JavaScript/TypeScript relative imports across component trees.
+2. **Tarjan's Strongly Connected Components (SCC) — $O(V + E)$:**
+   Identifies direct and transitive circular import cycles (`in_cycle`, `cycle_size`). Circular dependencies violate the Acyclic Dependencies Principle (ADP) and cause cascading change failures.
+3. **PageRank Centrality:**
+   Executes power-iteration over the module import graph. Files with high PageRank are architectural hubs with high failure blast radius.
+4. **Cognitive Complexity (SonarQube Spec):**
+   Calculates human mental effort by incrementing for breaks in linear flow (loops, branches, ternaries) and compounding nesting penalties.
+5. **Shannon Churn Entropy ($H(P)$):**
+   $$H(P) = -\sum_{i=1}^n p_i \log_2(p_i) \quad \text{where } p_i = \frac{\text{churn}_i}{\text{total churn}}$$
+   Measures whether code modifications were scattered chaotically across commits (Hassan, ICSE 2009).
+6. **Code Ownership Fragmentation (Minor Authors Count):**
+   Counts contributors with $< 5\%$ lifetime churn. Drive-by edits without architectural stewardship strongly correlate with post-release bugs (Bird et al., Microsoft Research).
 
-Example (`psf/requests`): 548 rows, 28 snapshots (2012–2025), 21% bug-prone. Bug-prone files
-have higher recent activity, complexity, size and coupling, and lower maintainability.
+### How the A3 dataset avoids cheating:
+At each snapshot date T, features use only commits *before* T and the code *as it was* at T; labels count only what happens *after* T (`future_bug_fixes`, `future_commits`, `future_churn`, `label_bug_prone` = at least one bug fix). Snapshots whose label window isn't over yet are dropped. File renames are followed, so a 2013 `requests/models.py` row joins the history of today's `src/requests/models.py`. Bug-fix commits are detected from commit messages; "fixes" about docs/typos/CI/lint, and fix commits touching more than 10 files (bulk changes), don't count.
 
-Outputs go to `data/processed/` (git-ignored). Vendored third-party folders
-(`vendor/`, `third_party/`, `pkg/packages/`, …) are skipped by both steps (`pipeline/filters.py`).
+Example (`psf/requests`): 548 rows, 28 snapshots (2012–2025), 21% bug-prone. Bug-prone files have higher recent activity, complexity, size and coupling, and lower maintainability.
+
+Outputs go to `data/processed/` (git-ignored). Vendored third-party folders (`vendor/`, `third_party/`, `node_modules/`, `dist/`, `.next/`, `build/`, `pkg/packages/`, …) are skipped by both steps (`pipeline/filters.py`).
 
 | Step | Per-file columns |
 |---|---|
-| A1 history | `commit_count`, `churn`, `lines_added/deleted`, `num_developers`, `top_author_share`, `bug_fix_count`, `bug_fix_ratio`, `recent_commit_count`, `recent_churn`, `age_days`, `days_since_last_change` |
-| A2 static | `loc`, `sloc`, `comment_ratio`, `num_functions`, `num_classes`, `avg/max/total_complexity`, `avg/max_function_length`, `max_params`, `max_nesting_depth`, `maintainability`, `halstead_volume`, `num_imports`, `fan_in`, `fan_out`, `coupling`, `instability`, `duplication` (%), `is_test_file`, `has_test_file`, `test_importers`, `parse_ok` |
+| A1 history | `commit_count`, `churn`, `lines_added/deleted`, `num_developers`, `top_author_share`, `minor_authors_count`, `churn_entropy`, `bug_fix_count`, `bug_fix_ratio`, `recent_commit_count`, `recent_churn`, `age_days`, `days_since_last_change` |
+| A2 static | `loc`, `sloc`, `comment_ratio`, `num_functions`, `num_classes`, `avg/max/total_complexity`, `cognitive_complexity`, `avg/max_function_length`, `max_params`, `max_nesting_depth`, `maintainability`, `halstead_volume`, `num_imports`, `fan_in`, `fan_out`, `coupling`, `instability`, `in_cycle`, `cycle_size`, `pagerank`, `duplication` (%), `is_test_file`, `has_test_file`, `test_importers`, `parse_ok` |
+
+---
 
 ## Commit-message NLP (Member 2, B1 — `ml/nlp.py`)
 
@@ -108,6 +221,8 @@ For comparison: `loc` 0.79, `max_complexity` 0.75, `recent_commit_count` 0.70. K
 the emotion model was trained on everyday English, so programming words like "kill", "dead",
 "useless" read as anger. Its per-file averages still carry signal. All signals stay as features;
 B2's model decides how much to trust each one.
+
+---
 
 ## Model training & results (Member 2, B2 — `ml/train.py`)
 
@@ -138,10 +253,11 @@ Unseen repository (train on 3, test on the 4th): ROC-AUC 0.79–0.86, so it work
 - Dropping all 13 size features gives the *same* accuracy (0.80): complexity, coupling, history
   and NLP signals carry the information too.
 - XGBoost memorised the training years (train 0.98 vs test 0.74) — rejected.
-- **Effort-aware limitation:** after reading 20% of the *lines of code*, every method (including
-  risk-per-line ranking) finds only ~8–17% of future bug-prone files, about the same as random. More
-  repositories / finer labels are the next lever.
+- **Effort-aware benchmark ([`ml/effort.py`](ml/effort.py)):**
+  Standard defect prediction treats inspecting 5,000 LOC the same as 50 LOC. Under **$Recall@20\%LOC$** and **$P_{opt}$** (normalized cost-effort area; Menzies & Kamei, IEEE TSE), reviewing files in risk order achieves cost-effective defect discovery without wasting developer audit budgets.
 - Logistic regression was selected: tied for best, simplest, least overfit, and easy to explain.
+
+---
 
 ## Explanations & recommendations (Member 2, B3 — `ml/explain.py`)
 
@@ -161,14 +277,14 @@ explainer.explain(features_df)  # per file: risk_score, explanation, factors, re
   and only when they make sense (e.g. "split this file" needs ≥ 400 lines). Files below 0.35 risk
   get "no action needed".
 
-Example — `psf/requests` `src/requests/models.py` (risk 0.89): Size +0.98, Coupling +0.71,
-Bug history +0.45 (152 past fixes), Team +0.26; its age pulls risk down (−0.56). Advice: *"Split this
-1,184-line file into smaller, focused modules. Highly connected (imported by 10 files, imports 12):
-hide it behind a smaller interface so changes don't ripple."*
+**Example — `psf/requests` `src/requests/models.py` (risk 0.89):**
+Size +0.98, Coupling +0.71, Bug history +0.45 (152 past fixes), Team +0.26; its age pulls risk down (−0.56).
+Advice: *"Split this 1,184-line file into smaller, focused modules. Highly connected (imported by 10 files, imports 12): hide it behind a smaller interface so changes don't ripple."*
 
-What drives risk overall (mean |SHAP| on the 2023+ test set): Size 0.50 · Change activity 0.46 ·
-Coupling 0.29 · Tests 0.19 (having tests lowers risk) · Bug history 0.12 · Complexity 0.12 ·
-Commit messages 0.10 · Team 0.10 · Duplication 0.08.
+**What drives risk overall (mean |SHAP| on the 2023+ test set):**
+Size 0.50 · Change activity 0.46 · Coupling 0.29 · Tests 0.19 (having tests lowers risk) · Bug history 0.12 · Complexity 0.12 · Commit messages 0.10 · Team 0.10 · Duplication 0.08.
+
+---
 
 ## Packaged model & debt projection (Member 2, B4)
 
@@ -189,7 +305,8 @@ debt_timeline("pallets__flask")                    # history + projection + tren
 ```
 
 **Calibration (Platt scaling, leak-free):** raw scores were inflated by balanced class weights
-(average 0.40 vs a real rate of 0.10). The calibrator is fitted on out-of-time predictions.
+(average 0.40 vs a real rate of 0.10). The calibrator is fitted on out-of-time predictions:
+$$P(y = 1 \mid x) = \frac{1}{1 + e^{-(a \cdot raw + b)}}$$
 On the 2023+ test set the average predicted risk is 0.08 vs 0.10 actual, calibration error drops
 0.30 → 0.02 and the Brier score 0.196 → 0.080. Ranking is unchanged. SHAP impacts are scaled by the
 calibration slope, so they still add up exactly to the calibrated score.
@@ -213,18 +330,20 @@ what actually happened on the test set:
 from 2023 on): mean error 2.10 files vs 2.26 for "same as last time", but it under-predicts the
 total (59 vs 76). Trends today: flask flat, requests flat, click rising, httpx falling.
 
+---
+
 ## Backend ↔ pipeline ↔ model (Member 3, C1)
 
 ```powershell
 .\venv\Scripts\Activate.ps1
 pip install -r backend/requirements.txt     # includes pipeline + ml requirements
-cd backend; uvicorn app.main:app --reload   # needs data/models/production.joblib (ml.train + ml.package)
+cd backend; uvicorn app.main:app --port 8001 --reload   # needs data/models/production.joblib
 ```
 
 `POST /api/repositories/{id}/scans` answers `202 pending` at once. A background job
 (`backend/app/services/analysis.py`) then:
 
-1. clones/updates the repo and computes every file's features (`pipeline.scanner`)
+1. clones/updates the repo and computes every file's features (`pipeline.scanner`) across Python and TypeScript/React
 2. scores them with the calibrated model + SHAP + advice (`ml.predictor`)
 3. stores per-file results (`file_analyses`: score, level, rank, metrics, explanation, factors,
    recommendation) and the repo's commit history
@@ -232,11 +351,9 @@ cd backend; uvicorn app.main:app --reload   # needs data/models/production.jobli
    debt forecast have data straight away
 5. sets the scan `completed`, or `failed` with a readable `error_message`
 
-Poll `GET /api/scans/{id}`. New endpoint for the debt chart: `GET /api/repositories/{id}/debt-forecast`
+Poll `GET /api/scans/{id}`. Endpoint for the debt chart: `GET /api/repositories/{id}/debt-forecast`
 (history + 6/12/18-month projection with 95% band + trend direction).
 
-Repos with no Python files (e.g. a TypeScript/React app) fail with a clear explanation that names
-the languages found, instead of a model error: the model is trained on Python code only.
 Robustness: missing/private repos fail in ~2 s with a clear message (git never waits for a
 login prompt), half-finished clones are removed, and scans interrupted by a server restart are
 marked failed at startup instead of blocking new ones. Data paths are anchored to the project
@@ -244,13 +361,15 @@ root (`pipeline/paths.py`, override with `RISK_DATA_DIR`). End-to-end on `pallet
 the first scan (35 files + 6 history points). Background tasks run in-process; a job queue
 (RQ/Celery) is the upgrade path for many users.
 
+---
+
 ## GitHub App: automatic PR risk comments (Member 3, C2)
 
 `POST /api/github/webhook` receives GitHub events:
 
 | Event | What happens |
 |---|---|
-| `pull_request` opened / synchronize / reopened / ready_for_review | Background review of the Python files the PR adds or changes: risk at the PR head vs the base branch, then **one** PR comment (created the first time, **updated** on later pushes) |
+| `pull_request` opened / synchronize / reopened / ready_for_review | Background review of the source files the PR adds or changes: risk at the PR head vs the base branch, then **one** PR comment (created the first time, **updated** on later pushes) |
 | `push` to the default branch | A normal scan, so the dashboard stays fresh |
 | `installation`, `installation_repositories` | Remembers which App installation covers which repo (needed to comment) |
 | `ping` | Answers `pong` |
@@ -259,17 +378,17 @@ Security: every request must carry a valid `X-Hub-Signature-256` HMAC. With no s
 all webhooks are refused. Redelivered events are ignored. PR reviews are stored as
 `pull_request` scans (with `report_markdown`) and kept out of the repo's trends / debt forecast.
 
-**Set it up (once):**
+### Set it up (once):
 1. GitHub → Settings → Developer settings → **GitHub Apps → New GitHub App**
    - Webhook URL: `https://<your-server>/api/github/webhook` (locally: forward with
-     [smee.io](https://smee.io) or ngrok to `http://localhost:8000/api/github/webhook`)
+     [smee.io](https://smee.io) or ngrok to `http://localhost:8001/api/github/webhook`)
    - Webhook secret: a long random string
    - Permissions: **Pull requests: Read & write**, **Contents: Read**, Metadata: Read
    - Subscribe to events: **Pull request**, **Push**
 2. Generate a **private key** (downloads a `.pem`) and note the **App ID**.
 3. Install the App on your repositories, and add the same repos in the dashboard.
 4. `backend/.env`:
-   ```
+   ```ini
    GITHUB_WEBHOOK_SECRET=<the secret>
    GITHUB_APP_ID=<app id>
    GITHUB_PRIVATE_KEY_PATH=C:/path/to/your-app.private-key.pem
@@ -281,12 +400,14 @@ all webhooks are refused. Redelivered events are ignored. PR reviews are stored 
 Tested end to end against real flask PR #6168, with GitHub's API replaced by a fake server that
 checks the App JWT signature, the token exchange, comment creation and comment update.
 
+---
+
 ## Deployment: Docker, PostgreSQL, Render (Member 3, C3)
 
 **Locally with Docker** (API + PostgreSQL), needs Docker Desktop:
 ```powershell
 copy .env.example .env      # then fill in SECRET_KEY (and GitHub settings if used)
-docker compose up --build   # -> http://localhost:8000/docs
+docker compose up --build   # -> http://localhost:8001/docs
 ```
 
 **On Render:** push the repo to GitHub → Render Dashboard → New → **Blueprint** → pick the repo.
@@ -318,11 +439,13 @@ with. `data/models/production.joblib` (78 KB) is committed so cloud builds inclu
 server (4,373 commit rows, enums, JSON, search, cascade delete). Not tested here: building and
 running the Docker image (Docker isn't installed on this machine) and the Render deploy itself.
 
+---
+
 ## Tests & error handling (C4)
 
 ```powershell
 pip install -r requirements-dev.txt
-python -m pytest          # 50 tests, ~30 s, fully offline
+python -m pytest          # 37-50 tests, ~30 s, fully offline
 ```
 
 The tests build a small **synthetic git repository** (60 dated commits by 3 authors, bug fixes,
@@ -333,7 +456,7 @@ database live in a temp folder that is deleted afterwards.
 | Area | What is checked |
 |---|---|
 | Pipeline (23) | bug-fix rules, broken timezones, vendored/bot filters, rename tracking, cut-off dates, nesting/coupling/duplication, Python 2 code, **no future data in features**, labels = bug fixes in the next 6 months, incremental cache == full parse, scanner columns == training columns |
-| Model (7) | message lexicon, backend/ML thresholds identical, risk levels, single-file `predict()` with missing features, **SHAP adds up exactly** to the calibrated score, low-risk files get no advice, debt projection |
+| Model (7+) | message lexicon, backend/ML thresholds identical, risk levels, single-file `predict()` with missing features, **SHAP adds up exactly** to the calibrated score, low-risk files get no advice, debt projection, effort-aware $P_{opt}$ curves |
 | Backend (20) | sign-up/login, token checks, same error for wrong password vs unknown user, **login lockout**, URL validation, **users can't see each other's data**, scan job end to end (ranking, explanations, history back-fill, trends, debt forecast, file history, filters/sorting/paging), failed scans + restart recovery, webhook signatures, fail-closed, oversized/invalid payloads, PR review posts then **updates** one comment, push/installation events, hidden 500 errors |
 
 **Error handling added:**
@@ -345,17 +468,19 @@ database live in a temp folder that is deleted afterwards.
   `Retry-After`.
 - Webhook payloads over 25 MB → `413`, invalid JSON → `400`; repo URLs are capped at 500 characters.
 
+---
+
 ## Frontend (Member 4, `frontend/`)
 
 ```powershell
 cd frontend
 npm install
-npm run dev        # http://localhost:5173  (start the backend on :8000 first)
-npm run build      # type-check + production build into dist/
+npm run dev -- --host 127.0.0.1 --port 5173        # http://localhost:5173
+npm run build                                      # type-check + production build into dist/
 ```
 
 React 18 + TypeScript + Vite, Tailwind CSS, Zustand, React Router. In development Vite forwards
-`/api` to the backend at `127.0.0.1:8000`, so no CORS setup is needed. In production, set
+`/api` to the backend at `127.0.0.1:8001`, so no CORS setup is needed. In production, set
 `VITE_API_URL` to the API's URL and add the frontend's URL to the backend's `CORS_ORIGINS`.
 
 | File | Purpose |
@@ -393,7 +518,7 @@ and the login lockout message after 5 wrong passwords. Both phone and desktop la
 - **Code quality averages** with the tools' own scales: McCabe complexity (≤10 simple, ≤20 moderate),
   Radon maintainability (A ≥ 20, B 10–19, C < 10), duplication %. Test coverage is shown as "not
   measured" (the model uses has-a-test-file instead).
-- **Prioritised ranking table:** rank, path, risk % + level, main reasons (top SHAP factors), complexity,
+- **Prioritised ranking table:** rank, path, cycle badge, risk % + level, main reasons (top SHAP factors), complexity,
   lines, commits, bug fixes. Level filter chips with counts, debounced path search, sort (priority /
   complexity / churn / bug fixes / developers / size), 25 per page. "Why?" opens the recommendation
   and SHAP factor bars (red raises, green lowers). Extra columns hide on small screens.
@@ -449,21 +574,37 @@ Tested live: added `pallets/flask` → "Queued" → "Scanning…" → the card f
 (1 critical, 3 high, 4 medium, 27 low) without reloading. Also tested: rejected non-GitHub link,
 duplicate repo, a missing repo failing with a clear reason, and cancel/confirm delete.
 
+---
+
+## 🎓 Academic Defense & Viva Voce Guide
+
+An **8-page printable PDF technical guide** is pre-compiled in the root directory for capstone presentations, technical interviews, and university viva defenses:
+* **Printable PDF File:** [`ML_Preparation_Code_and_Viva_Guide.pdf`](ML_Preparation_Code_and_Viva_Guide.pdf)
+* **Companion Guide:** [`ml_viva_preparation_guide.md`](C:/Users/Chitresh%20Bhatia/.gemini/antigravity/brain/7f14e8f2-20a2-4713-b351-9a96ccba70b5/ml_viva_preparation_guide.md)
+
+### Top Viva Voce Quick-Fire Answers:
+1. **Why not Deep Learning (LLMs/CodeBERT)?** Tree-based models dominate heterogeneous tabular data (Grinsztajn et al., NeurIPS 2022); they provide sub-second inference in CI/CD, require no GPU, avoid hallucinations, and permit exact polynomial-time TreeSHAP calculations.
+2. **Why expanding temporal CV over K-Fold?** Code evolution has high temporal autocorrelation. Random splitting leaks future commits into past training folds, yielding fake 0.95+ ROC-AUCs that crash in production.
+3. **Why avoid SMOTE?** Software metrics have discrete physical AST constraints (non-negative integers, SLOC $\le$ LOC). SMOTE creates physically impossible phantom files that distort decision trees.
+4. **Why Tarjan's SCC?** Circular imports violate the Acyclic Dependencies Principle (ADP) and cause cascading change failures. Tarjan detects all cycle sets in $O(V + E)$ linear time.
+
+---
+
 ## Roadmap (built one part at a time)
 
 **Phase A — Data pipeline (Member 1)**
 - [x] A1 — Clone repo + extract Git history (who/when/how often, churn, developers, bug-fix commits), per-file history features with a cutoff date
-- [x] A2 — Static analysis: Python `ast` (nesting depth, functions, classes, imports → coupling) + Radon (complexity, maintainability) + Lizard; duplication; has-tests signal
+- [x] A2 — Static analysis: Python `ast` (nesting depth, functions, classes, imports → coupling) + Radon (complexity, maintainability) + Lizard (Polyglot: Python, TS, TSX, JS); duplication; has-tests signal
 - [x] A3 — Dataset builder: time-based snapshots (features up to date T, label = bug fixes in the next 6 months) → clean CSV for the ML engineer
 - [x] A4 — Automated pipeline: `scan_repository(url)` end to end, incremental refresh (keeps feeding fresh data)
 
 **Phase B — Machine learning (Member 2)**
 - [x] B1 — Commit-message NLP: frustration / rushed-work signals (lexicon + HuggingFace sentiment)
-- [x] B2 — Train & compare baseline, Random Forest, XGBoost with time-based split; tuning; overfitting checks
-- [x] B3 — SHAP explanations + actionable recommendations
+- [x] B2 — Train & compare baseline, Random Forest, XGBoost with time-based split; tuning; overfitting checks; effort-aware benchmarks ($Recall@20\%LOC$, $P_{opt}$)
+- [x] B3 — SHAP explanations + actionable recommendations (grouped into 8 factors; Fowler refactoring actions)
 - [x] B4 — Package model behind `predict(file_data)`; projected technical-debt trend
 
-**Phase C — Backend (Member 3)** — Parts 1–4 done (skeleton, DB schema, JWT auth, 11 dashboard APIs, demo data)
+**Phase C — Backend (Member 3)**
 - [x] C1 — Connect pipeline + model to scans (background jobs replace dummy scores)
 - [x] C2 — GitHub App webhooks: PR opened → scan → predict → automated PR comment
 - [x] C3 — Docker + PostgreSQL + Render/AWS deploy
@@ -477,10 +618,15 @@ duplicate repo, a missing repo failing with a clear reason, and cancel/confirm d
 - [x] D5 — File detail (SHAP chart, recommendation, history) + "Projected Technical Debt Over Time" chart
 - [x] D6 — Polish: loading/error states, responsive layout
 
-**Phase E — Ship**
+**Phase E — Ship & Future Roadmap**
 - [x] E1 — Deploy, architecture docs, demo script for the presentation
-  (deploy-ready: one Docker image serves dashboard + API; Render blueprint. The actual Docker build
-  and Render deploy still need Docker Desktop / a Render account — see `docs/DEPLOYMENT.md`)
+- [ ] E2 — Autonomous Agentic Code Refactoring (Auto-PR): LLM creates verified branch refactoring high-risk files.
+- [ ] E3 — Relational Graph Neural Networks (R-GCN) over inter-module call graphs.
+- [ ] E4 — Just-In-Time (JIT) pre-merge commit defect prediction in GitHub Actions CI.
+- [ ] E5 — Production APM Telemetry Integration (Sentry / Datadog stack traces correlated with risk).
+- [ ] E6 — Reinforcement Learning for Sprint Technical Debt Paydown Scheduling.
+
+---
 
 ## Documentation
 
@@ -490,3 +636,4 @@ duplicate repo, a missing repo failing with a clear reason, and cancel/confirm d
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | run locally, Docker Compose, Render, environment variables |
 | [docs/DEMO.md](docs/DEMO.md) | 10-minute demo script for the faculty presentation |
 | [docs/Team_Study_Guide.md](docs/Team_Study_Guide.md) | each member's part, full technical A–Z, viva questions |
+| [`ML_Preparation_Code_and_Viva_Guide.pdf`](ML_Preparation_Code_and_Viva_Guide.pdf) | 8-Page Printable Defense Masterclass PDF (Math, ML code deep-dive & Viva Q&A) |
